@@ -1,0 +1,7 @@
+keras-facenet
+tensorflow
+scikit-learn
+joblib
+pillow
+pillow-heif
+streamlit
