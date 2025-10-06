@@ -1,7 +1,11 @@
 keras-facenet
-tensorflow
+tensorflow==2.10
+numpy
+pillow
 scikit-learn
 joblib
-pillow
-pillow-heif
 streamlit
+mtcnn
+matplotlib
+seaborn
+opencv-python
