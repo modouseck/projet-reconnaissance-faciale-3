@@ -1,16 +1,19 @@
-# embeddings.py
-# Génère embeddings FaceNet pour chaque image dans le dossier "faces/"
-# Utilise MTCNN pour détecter / recadrer le visage avant embedding
-
 import os
 import numpy as np
 from PIL import Image
-from mtcnn import MTCNN
-from keras_facenet import FaceNet
-from tensorflow.keras.preprocessing.image import img_to_array
+from deepface import DeepFace
+import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
 # Use the requested path exactly as given by the user (FACE_REF).
-# If it's a file, the script will use its parent directory as the images folder.
+# If it's a file, use its parent directory as the images folder.
 FACE_REF = "/Users/User/Desktop/face/face mouhamed:ami.py"
 
 def _resolve_folder(path):
@@ -22,34 +25,20 @@ IMAGES_DIR = _resolve_folder(FACE_REF)
 EMBEDDINGS_OUT = os.path.join(IMAGES_DIR, "faces_embeddings.npz")
 MODEL_OUT = os.path.join(IMAGES_DIR, "best_model.pkl")
 
-detector = MTCNN()
-embedder = FaceNet()
-
-def extract_face(image_path, required_size=(160,160)):
-    """Detecte le visage avec MTCNN, recadre et redimensionne."""
-    image = Image.open(image_path).convert('RGB')
-    pixels = np.asarray(image)
-    results = detector.detect_faces(pixels)
-    if not results:
-        raise ValueError(f"Aucun visage détecté dans {image_path}")
-    # prendre le premier visage détecté
-    x, y, w, h = results[0]['box']
-    x, y = abs(x), abs(y)
-    face = pixels[y:y+h, x:x+w]
-    face_image = Image.fromarray(face).resize(required_size)
-    face_array = img_to_array(face_image)
-    return face_array
-
-def get_embedding_from_array(face_array):
-    """Prend un array (160,160,3) et renvoie l'embedding 512D."""
-    img = np.expand_dims(face_array, axis=0)
-    img = (img - 127.5) / 128.0
-    return embedder.embeddings(img)[0]
-
-def get_embedding(image_path):
-    """Pipeline complet : detect -> crop -> embed"""
-    face = extract_face(image_path)
-    return get_embedding_from_array(face)
+def get_embedding(image_path, model_name="Facenet", detector_backend="opencv"):
+    """Use DeepFace to detect and compute embedding for a file path."""
+    rep = DeepFace.represent(img_path=image_path, model_name=model_name, detector_backend=detector_backend, enforce_detection=True)
+    if isinstance(rep, list) and rep:
+        first = rep[0]
+        if isinstance(first, dict) and "embedding" in first:
+            emb = np.array(first["embedding"])
+        else:
+            emb = np.array(first)
+    elif isinstance(rep, dict) and "embedding" in rep:
+        emb = np.array(rep["embedding"])
+    else:
+        emb = np.array(rep)
+    return emb
 
 def build_dataset(folder=IMAGES_DIR, out_file=EMBEDDINGS_OUT):
     if not os.path.isdir(folder):
@@ -73,7 +62,11 @@ def build_dataset(folder=IMAGES_DIR, out_file=EMBEDDINGS_OUT):
     print(f"\n📂 Embeddings sauvegardés dans '{out_file}' -> X:{X.shape}, labels:{len(y)}")
     return X, y
 
-# ...existing code (training / evaluation)...
+# train_and_eval.py
+# Entraîne plusieurs classifieurs à partir de faces_embeddings.npz,
+# affiche métriques et sauvegarde le meilleur modèle (best_model.pkl).
+
+import numpy as np
 import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -83,6 +76,14 @@ from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
+
+
+# Ensuite, tu peux faire le split normalement
+from sklearn.model_selection import train_test_split
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_loaded, y_loaded, test_size=0.2, stratify=y_loaded, random_state=42
+)
 
 def load_embeddings(file=EMBEDDINGS_OUT):
     if not os.path.exists(file):
@@ -142,8 +143,38 @@ def evaluate_and_save_best(X, y, save_path=MODEL_OUT):
 
 if __name__ == "__main__":
     # 1) Générer embeddings depuis le dossier d'images (IMAGES_DIR)
-    X, y = build_dataset(folder=IMAGES_DIR, out_file=EMBEDDINGS_OUT)
+    if not os.path.isdir(IMAGES_DIR):
+        print(f"Erreur: dossier d'images introuvable: {IMAGES_DIR}")
+    else:
+        X, y = build_dataset(folder=IMAGES_DIR, out_file=EMBEDDINGS_OUT)
 
-    # 2) Charger embeddings et entraîner/évaluer / sauvegarder le meilleur modèle
-    X_loaded, y_loaded, names = load_embeddings(EMBEDDINGS_OUT)
-    evaluate_and_save_best(X_loaded, y_loaded, save_path=MODEL_OUT)
+        # 2) Charger embeddings et entraîner/évaluer / sauvegarder le meilleur modèle
+        X_loaded, y_loaded, names = load_embeddings(EMBEDDINGS_OUT)
+        evaluate_and_save_best(X_loaded, y_loaded, save_path=MODEL_OUT)
+    plt.xlabel("Prédit")
+    plt.ylabel("Réel")
+    plt.title(f"Matrice de confusion - {best_name}")
+    plt.tight_layout()
+    plt.savefig(os.path.join(IMAGES_DIR, "confusion_matrix.png"))
+    print("📊 Matrice de confusion sauvegardée : confusion_matrix.png")
+
+if __name__ == "__main__":
+    # 1) Générer embeddings depuis le dossier d'images (IMAGES_DIR)
+    if not os.path.isdir(IMAGES_DIR):
+        print(f"Erreur: dossier d'images introuvable: {IMAGES_DIR}")
+    else:
+        X, y = build_dataset(folder=IMAGES_DIR, out_file=EMBEDDINGS_OUT)
+
+        # 2) Charger embeddings et entraîner/évaluer / sauvegarder le meilleur modèle
+        X_loaded, y_loaded, names = load_embeddings(EMBEDDINGS_OUT)
+        evaluate_and_save_best(X_loaded, y_loaded, save_path=MODEL_OUT)
+    plt.xlabel("Prédit")
+    plt.ylabel("Réel")
+    plt.title(f"Matrice de confusion - {best_name}")
+    plt.tight_layout()
+    plt.savefig("confusion_matrix.png")
+    print("📊 Matrice de confusion sauvegardée : confusion_matrix.png")
+
+if __name__ == "__main__":
+ X, y, names = load_embeddings("/Users/User/Desktop/face/face mouhamed:ami.py")
+evaluate_and_save_best(X, y, save_path="/Users/User/Desktop/face/face mouhamed:ami.py")

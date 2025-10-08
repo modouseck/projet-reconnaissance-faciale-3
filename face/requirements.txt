@@ -1,11 +1,9 @@
-keras-facenet
-tensorflow==2.10
+deepface
+streamlit
 numpy
 pillow
 scikit-learn
-joblib
-streamlit
-mtcnn
 matplotlib
 seaborn
+joblib
 opencv-python
